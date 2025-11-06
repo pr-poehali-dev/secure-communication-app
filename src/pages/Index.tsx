@@ -17,39 +17,53 @@ interface Message {
 
 interface User {
   username: string;
+  password: string;
   lastSeen: Date;
 }
 
 const Index = () => {
-  const [currentScreen, setCurrentScreen] = useState<'login' | 'search' | 'chat'>('login');
+  const [currentScreen, setCurrentScreen] = useState<'login' | 'register' | 'search' | 'chat'>('login');
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [messageInput, setMessageInput] = useState('');
   const [currentChat, setCurrentChat] = useState<User | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [registeredUsers, setRegisteredUsers] = useState<User[]>([
+    { username: 'alice_crypto', password: 'demo123', lastSeen: new Date() },
+    { username: 'bob_secure', password: 'demo123', lastSeen: new Date(Date.now() - 300000) },
+    { username: 'charlie_anon', password: 'demo123', lastSeen: new Date(Date.now() - 600000) },
+  ]);
+  const [currentUser, setCurrentUser] = useState<string>('');
   const { toast } = useToast();
 
-  const mockUsers: User[] = [
-    { username: 'alice_crypto', lastSeen: new Date() },
-    { username: 'bob_secure', lastSeen: new Date(Date.now() - 300000) },
-    { username: 'charlie_anon', lastSeen: new Date(Date.now() - 600000) },
-  ];
-
   const handleLogin = () => {
-    if (!username.trim()) {
+    if (!username.trim() || !password.trim()) {
       toast({
         title: "Ошибка",
-        description: "Введите никнейм",
+        description: "Заполните все поля",
         variant: "destructive"
       });
       return;
     }
     
-    const existingUser = mockUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
-    if (existingUser) {
+    const user = registeredUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
+    
+    if (!user) {
       toast({
         title: "Ошибка",
-        description: "Никнейм уже занят",
+        description: "Пользователь не найден",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (user.password !== password) {
+      toast({
+        title: "Ошибка",
+        description: "Неверный пароль",
         variant: "destructive"
       });
       return;
@@ -59,6 +73,75 @@ const Index = () => {
       title: "Успешно",
       description: `Добро пожаловать, @${username}`,
     });
+    setCurrentUser(username);
+    setCurrentScreen('search');
+    setPassword('');
+  };
+
+  const handleRegister = () => {
+    if (!username.trim() || !password.trim() || !confirmPassword.trim()) {
+      toast({
+        title: "Ошибка",
+        description: "Заполните все поля",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (username.length < 3) {
+      toast({
+        title: "Ошибка",
+        description: "Никнейм должен содержать минимум 3 символа",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (password.length < 6) {
+      toast({
+        title: "Ошибка",
+        description: "Пароль должен содержать минимум 6 символов",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast({
+        title: "Ошибка",
+        description: "Пароли не совпадают",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const existingUser = registeredUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
+    if (existingUser) {
+      toast({
+        title: "Ошибка",
+        description: "Никнейм уже занят",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const newUser: User = {
+      username: username.trim(),
+      password: password,
+      lastSeen: new Date()
+    };
+
+    setRegisteredUsers([...registeredUsers, newUser]);
+    
+    toast({
+      title: "Регистрация завершена",
+      description: `Аккаунт @${username} создан`,
+    });
+    
+    setCurrentUser(username);
+    setUsername('');
+    setPassword('');
+    setConfirmPassword('');
     setCurrentScreen('search');
   };
 
@@ -82,7 +165,7 @@ const Index = () => {
     const newMessage: Message = {
       id: Date.now().toString(),
       text: messageInput,
-      sender: username,
+      sender: currentUser,
       timestamp: new Date(),
       encrypted: true
     };
@@ -91,8 +174,8 @@ const Index = () => {
     setMessageInput('');
   };
 
-  const filteredUsers = mockUsers.filter(u => 
-    u.username.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredUsers = registeredUsers.filter(u => 
+    u.username.toLowerCase().includes(searchQuery.toLowerCase()) && u.username !== currentUser
   );
 
   const formatTime = (date: Date) => {
@@ -108,19 +191,50 @@ const Index = () => {
               <Icon name="Lock" size={32} className="text-primary-foreground" />
             </div>
             <h1 className="text-3xl font-bold">SecureChat</h1>
-            <p className="text-muted-foreground">Защищенное общение без компромиссов</p>
+            <p className="text-muted-foreground">Вход в систему</p>
           </div>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Никнейм</label>
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Icon name="User" size={14} />
+                Никнейм
+              </label>
               <Input
-                placeholder="Введите уникальный никнейм"
+                placeholder="Ваш никнейм"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
                 className="h-12"
+                autoComplete="username"
               />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Icon name="KeyRound" size={14} />
+                Пароль
+              </label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Ваш пароль"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                  className="h-12 pr-10"
+                  autoComplete="current-password"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-12 w-12"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  <Icon name={showPassword ? "EyeOff" : "Eye"} size={18} />
+                </Button>
+              </div>
             </div>
 
             <Button 
@@ -128,14 +242,169 @@ const Index = () => {
               className="w-full h-12 text-lg"
               size="lg"
             >
-              Начать общение
-              <Icon name="ArrowRight" size={20} className="ml-2" />
+              Войти
+              <Icon name="LogIn" size={20} className="ml-2" />
+            </Button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">
+                  Новый пользователь?
+                </span>
+              </div>
+            </div>
+
+            <Button 
+              onClick={() => {
+                setUsername('');
+                setPassword('');
+                setCurrentScreen('register');
+              }}
+              variant="outline"
+              className="w-full h-12"
+              size="lg"
+            >
+              Создать аккаунт
+              <Icon name="UserPlus" size={20} className="ml-2" />
             </Button>
           </div>
 
           <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 p-3 rounded-lg">
             <Icon name="ShieldCheck" size={16} />
-            <span>End-to-end шифрование • Без email • Полная приватность</span>
+            <span>End-to-end шифрование • Полная приватность</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (currentScreen === 'register') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-background to-secondary/20">
+        <Card className="w-full max-w-md p-8 space-y-6 animate-fade-in backdrop-blur-sm border-2">
+          <div className="text-center space-y-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute left-4 top-4"
+              onClick={() => {
+                setUsername('');
+                setPassword('');
+                setConfirmPassword('');
+                setCurrentScreen('login');
+              }}
+            >
+              <Icon name="ArrowLeft" size={20} />
+            </Button>
+            <div className="mx-auto w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mb-4">
+              <Icon name="UserPlus" size={32} className="text-primary-foreground" />
+            </div>
+            <h1 className="text-3xl font-bold">Регистрация</h1>
+            <p className="text-muted-foreground">Создайте защищенный аккаунт</p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Icon name="User" size={14} />
+                Никнейм
+              </label>
+              <Input
+                placeholder="Уникальный никнейм (мин. 3 символа)"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="h-12"
+                autoComplete="username"
+              />
+              {username.length > 0 && username.length < 3 && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <Icon name="AlertCircle" size={12} />
+                  Слишком короткий никнейм
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Icon name="KeyRound" size={14} />
+                Пароль
+              </label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Надежный пароль (мин. 6 символов)"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="h-12 pr-10"
+                  autoComplete="new-password"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-12 w-12"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  <Icon name={showPassword ? "EyeOff" : "Eye"} size={18} />
+                </Button>
+              </div>
+              {password.length > 0 && password.length < 6 && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <Icon name="AlertCircle" size={12} />
+                  Слишком короткий пароль
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Icon name="ShieldCheck" size={14} />
+                Подтверждение пароля
+              </label>
+              <Input
+                type={showPassword ? "text" : "password"}
+                placeholder="Повторите пароль"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleRegister()}
+                className="h-12"
+                autoComplete="new-password"
+              />
+              {confirmPassword.length > 0 && password !== confirmPassword && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <Icon name="AlertCircle" size={12} />
+                  Пароли не совпадают
+                </p>
+              )}
+            </div>
+
+            <Button 
+              onClick={handleRegister}
+              className="w-full h-12 text-lg"
+              size="lg"
+              disabled={
+                username.length < 3 || 
+                password.length < 6 || 
+                password !== confirmPassword
+              }
+            >
+              Зарегистрироваться
+              <Icon name="CheckCircle" size={20} className="ml-2" />
+            </Button>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 p-3 rounded-lg">
+              <Icon name="Info" size={16} />
+              <div className="space-y-1">
+                <p>• Никнейм уникален и не может быть изменен</p>
+                <p>• Пароль хранится в зашифрованном виде</p>
+                <p>• Нет email и номера телефона</p>
+              </div>
+            </div>
           </div>
         </Card>
       </div>
@@ -151,19 +420,26 @@ const Index = () => {
               <div className="flex items-center gap-3">
                 <Avatar className="h-10 w-10 bg-primary">
                   <AvatarFallback className="bg-primary text-primary-foreground font-bold">
-                    {username[0]?.toUpperCase()}
+                    {currentUser[0]?.toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-semibold">@{username}</p>
+                  <p className="font-semibold">@{currentUser}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                     Онлайн
                   </p>
                 </div>
               </div>
-              <Button variant="ghost" size="icon">
-                <Icon name="Settings" size={20} />
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => {
+                  setCurrentUser('');
+                  setCurrentScreen('login');
+                }}
+              >
+                <Icon name="LogOut" size={20} />
               </Button>
             </div>
 
@@ -256,7 +532,7 @@ const Index = () => {
           </div>
 
           {messages.map((msg) => {
-            const isOwn = msg.sender === username;
+            const isOwn = msg.sender === currentUser;
             return (
               <div
                 key={msg.id}
