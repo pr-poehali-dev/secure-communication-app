@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "name": "Send message",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "send",
+        "sender_username": "test_user",
+        "recipient_username": "test_recipient",
+        "message_text": "Hello, this is a test message"
+      },
+      "expectedStatus": 201,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get users list",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "get_users",
+        "current_user": "test_user",
+        "search": ""
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "users": []
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

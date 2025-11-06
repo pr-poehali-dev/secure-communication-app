@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -7,18 +7,21 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 
+const API_AUTH = 'https://functions.poehali.dev/1b90fa66-b54e-4561-af3f-b50e2e71de70';
+const API_MESSAGES = 'https://functions.poehali.dev/4099041d-1326-49c3-ada0-75da30ded4c6';
+
 interface Message {
   id: string;
-  text: string;
-  sender: string;
-  timestamp: Date;
+  message_text: string;
+  sender_username: string;
+  recipient_username: string;
+  timestamp: string;
   encrypted: boolean;
 }
 
 interface User {
   username: string;
-  password: string;
-  lastSeen: Date;
+  last_seen: string;
 }
 
 const Index = () => {
@@ -31,15 +34,61 @@ const Index = () => {
   const [messageInput, setMessageInput] = useState('');
   const [currentChat, setCurrentChat] = useState<User | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [registeredUsers, setRegisteredUsers] = useState<User[]>([
-    { username: 'alice_crypto', password: 'demo123', lastSeen: new Date() },
-    { username: 'bob_secure', password: 'demo123', lastSeen: new Date(Date.now() - 300000) },
-    { username: 'charlie_anon', password: 'demo123', lastSeen: new Date(Date.now() - 600000) },
-  ]);
+  const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<string>('');
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleLogin = () => {
+  useEffect(() => {
+    if (currentScreen === 'search') {
+      loadUsers();
+    }
+  }, [currentScreen, searchQuery]);
+
+  useEffect(() => {
+    if (currentScreen === 'chat' && currentChat) {
+      loadMessages();
+      const interval = setInterval(loadMessages, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [currentScreen, currentChat]);
+
+  const loadUsers = async () => {
+    try {
+      const response = await fetch(API_MESSAGES, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get_users',
+          current_user: currentUser,
+          search: searchQuery
+        })
+      });
+      const data = await response.json();
+      if (data.users) {
+        setUsers(data.users);
+      }
+    } catch (error) {
+      console.error('Failed to load users:', error);
+    }
+  };
+
+  const loadMessages = async () => {
+    if (!currentChat) return;
+    try {
+      const response = await fetch(
+        `${API_MESSAGES}?username=${currentUser}&other_user=${currentChat.username}`
+      );
+      const data = await response.json();
+      if (data.messages) {
+        setMessages(data.messages);
+      }
+    } catch (error) {
+      console.error('Failed to load messages:', error);
+    }
+  };
+
+  const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
       toast({
         title: "Ошибка",
@@ -49,36 +98,47 @@ const Index = () => {
       return;
     }
     
-    const user = registeredUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
-    
-    if (!user) {
+    setLoading(true);
+    try {
+      const response = await fetch(API_AUTH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'login',
+          username: username.trim(),
+          password: password
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        toast({
+          title: "Успешно",
+          description: `Добро пожаловать, @${username}`,
+        });
+        setCurrentUser(username.trim());
+        setCurrentScreen('search');
+        setPassword('');
+      } else {
+        toast({
+          title: "Ошибка",
+          description: data.error || "Неверный логин или пароль",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
       toast({
         title: "Ошибка",
-        description: "Пользователь не найден",
+        description: "Не удалось подключиться к серверу",
         variant: "destructive"
       });
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    if (user.password !== password) {
-      toast({
-        title: "Ошибка",
-        description: "Неверный пароль",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    toast({
-      title: "Успешно",
-      description: `Добро пожаловать, @${username}`,
-    });
-    setCurrentUser(username);
-    setCurrentScreen('search');
-    setPassword('');
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (!username.trim() || !password.trim() || !confirmPassword.trim()) {
       toast({
         title: "Ошибка",
@@ -115,70 +175,97 @@ const Index = () => {
       return;
     }
     
-    const existingUser = registeredUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
-    if (existingUser) {
+    setLoading(true);
+    try {
+      const response = await fetch(API_AUTH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'register',
+          username: username.trim(),
+          password: password
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        toast({
+          title: "Регистрация завершена",
+          description: `Аккаунт @${username} создан`,
+        });
+        setCurrentUser(username.trim());
+        setUsername('');
+        setPassword('');
+        setConfirmPassword('');
+        setCurrentScreen('search');
+      } else {
+        toast({
+          title: "Ошибка",
+          description: data.error || "Не удалось создать аккаунт",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
       toast({
         title: "Ошибка",
-        description: "Никнейм уже занят",
+        description: "Не удалось подключиться к серверу",
         variant: "destructive"
       });
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    const newUser: User = {
-      username: username.trim(),
-      password: password,
-      lastSeen: new Date()
-    };
-
-    setRegisteredUsers([...registeredUsers, newUser]);
-    
-    toast({
-      title: "Регистрация завершена",
-      description: `Аккаунт @${username} создан`,
-    });
-    
-    setCurrentUser(username);
-    setUsername('');
-    setPassword('');
-    setConfirmPassword('');
-    setCurrentScreen('search');
   };
 
   const handleSelectUser = (user: User) => {
     setCurrentChat(user);
-    setMessages([
-      {
-        id: '1',
-        text: 'Привет! Это защищенный чат 🔒',
-        sender: user.username,
-        timestamp: new Date(Date.now() - 60000),
-        encrypted: true
-      }
-    ]);
+    setMessages([]);
     setCurrentScreen('chat');
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!messageInput.trim() || !currentChat) return;
 
-    const newMessage: Message = {
+    const tempMessage: Message = {
       id: Date.now().toString(),
-      text: messageInput,
-      sender: currentUser,
-      timestamp: new Date(),
+      message_text: messageInput,
+      sender_username: currentUser,
+      recipient_username: currentChat.username,
+      timestamp: new Date().toISOString(),
       encrypted: true
     };
 
-    setMessages([...messages, newMessage]);
+    setMessages([...messages, tempMessage]);
+    const textToSend = messageInput;
     setMessageInput('');
+
+    try {
+      const response = await fetch(API_MESSAGES, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send',
+          sender_username: currentUser,
+          recipient_username: currentChat.username,
+          message_text: textToSend
+        })
+      });
+      
+      if (response.ok) {
+        await loadMessages();
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось отправить сообщение",
+        variant: "destructive"
+      });
+    }
   };
 
-  const filteredUsers = registeredUsers.filter(u => 
-    u.username.toLowerCase().includes(searchQuery.toLowerCase()) && u.username !== currentUser
-  );
-
-  const formatTime = (date: Date) => {
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
     return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   };
 
@@ -207,6 +294,7 @@ const Index = () => {
                 onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
                 className="h-12"
                 autoComplete="username"
+                disabled={loading}
               />
             </div>
 
@@ -224,6 +312,7 @@ const Index = () => {
                   onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
                   className="h-12 pr-10"
                   autoComplete="current-password"
+                  disabled={loading}
                 />
                 <Button
                   type="button"
@@ -231,6 +320,7 @@ const Index = () => {
                   size="icon"
                   className="absolute right-0 top-0 h-12 w-12"
                   onClick={() => setShowPassword(!showPassword)}
+                  disabled={loading}
                 >
                   <Icon name={showPassword ? "EyeOff" : "Eye"} size={18} />
                 </Button>
@@ -241,8 +331,9 @@ const Index = () => {
               onClick={handleLogin}
               className="w-full h-12 text-lg"
               size="lg"
+              disabled={loading}
             >
-              Войти
+              {loading ? 'Вход...' : 'Войти'}
               <Icon name="LogIn" size={20} className="ml-2" />
             </Button>
 
@@ -266,6 +357,7 @@ const Index = () => {
               variant="outline"
               className="w-full h-12"
               size="lg"
+              disabled={loading}
             >
               Создать аккаунт
               <Icon name="UserPlus" size={20} className="ml-2" />
@@ -296,6 +388,7 @@ const Index = () => {
                 setConfirmPassword('');
                 setCurrentScreen('login');
               }}
+              disabled={loading}
             >
               <Icon name="ArrowLeft" size={20} />
             </Button>
@@ -318,6 +411,7 @@ const Index = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 className="h-12"
                 autoComplete="username"
+                disabled={loading}
               />
               {username.length > 0 && username.length < 3 && (
                 <p className="text-xs text-destructive flex items-center gap-1">
@@ -340,6 +434,7 @@ const Index = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   className="h-12 pr-10"
                   autoComplete="new-password"
+                  disabled={loading}
                 />
                 <Button
                   type="button"
@@ -347,6 +442,7 @@ const Index = () => {
                   size="icon"
                   className="absolute right-0 top-0 h-12 w-12"
                   onClick={() => setShowPassword(!showPassword)}
+                  disabled={loading}
                 >
                   <Icon name={showPassword ? "EyeOff" : "Eye"} size={18} />
                 </Button>
@@ -372,6 +468,7 @@ const Index = () => {
                 onKeyPress={(e) => e.key === 'Enter' && handleRegister()}
                 className="h-12"
                 autoComplete="new-password"
+                disabled={loading}
               />
               {confirmPassword.length > 0 && password !== confirmPassword && (
                 <p className="text-xs text-destructive flex items-center gap-1">
@@ -386,12 +483,13 @@ const Index = () => {
               className="w-full h-12 text-lg"
               size="lg"
               disabled={
+                loading ||
                 username.length < 3 || 
                 password.length < 6 || 
                 password !== confirmPassword
               }
             >
-              Зарегистрироваться
+              {loading ? 'Регистрация...' : 'Зарегистрироваться'}
               <Icon name="CheckCircle" size={20} className="ml-2" />
             </Button>
           </div>
@@ -457,13 +555,13 @@ const Index = () => {
 
         <ScrollArea className="flex-1">
           <div className="p-4 space-y-2">
-            {filteredUsers.length === 0 ? (
+            {users.length === 0 ? (
               <div className="text-center py-12 space-y-3">
                 <Icon name="Users" size={48} className="mx-auto text-muted-foreground opacity-50" />
                 <p className="text-muted-foreground">Пользователи не найдены</p>
               </div>
             ) : (
-              filteredUsers.map((user) => (
+              users.map((user) => (
                 <Card
                   key={user.username}
                   className="p-4 hover:bg-accent/50 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
@@ -532,7 +630,7 @@ const Index = () => {
           </div>
 
           {messages.map((msg) => {
-            const isOwn = msg.sender === currentUser;
+            const isOwn = msg.sender_username === currentUser;
             return (
               <div
                 key={msg.id}
@@ -545,7 +643,7 @@ const Index = () => {
                       : 'bg-card border border-border'
                   }`}
                 >
-                  <p className="break-words">{msg.text}</p>
+                  <p className="break-words">{msg.message_text}</p>
                   <div className="flex items-center gap-1 justify-end mt-1">
                     <span className={`text-xs ${isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                       {formatTime(msg.timestamp)}
